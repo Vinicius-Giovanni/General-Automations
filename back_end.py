@@ -1,5 +1,6 @@
 import pandas as pd
 from collections import Counter
+import numpy as np
 
 def load_data(xlsx_file, txt_file) -> pd.DataFrame:
     """
@@ -56,9 +57,9 @@ def load_data(xlsx_file, txt_file) -> pd.DataFrame:
 
     # --- Leitura do Excel ---
     if hasattr(xlsx_file, "read"):  # UploadedFile
-        df_excel = pd.read_excel(xlsx_file)
+        df_excel = pd.read_excel(xlsx_file, parse_dates=['OTS'])
     else:
-        df_excel = pd.read_excel(xlsx_file)
+        df_excel = pd.read_excel(xlsx_file, parse_dates=['OTS'])
 
     # Cria PEDIDO no Excel se necessário
     if 'PEDIDO' not in df_excel.columns:
@@ -70,20 +71,57 @@ def load_data(xlsx_file, txt_file) -> pd.DataFrame:
     # --- Merge ---
     df = pd.merge(df_excel, df_txt, on='PEDIDO', how='left')
 
-    # --- Conversão de valores ---
-    if 'Valor Venda' in df.columns:
-        df['Valor Venda'] = pd.to_numeric(df['Valor Venda'].astype(str).str.replace(',','').str.replace(' ',''), errors='coerce')
-    else:
-        df['Valor Venda'] = 0
+    # -- Definindo Tipos ---
+    DATA_TYPES ={
+        'PEDIDO': 'string',
+        'TIPO DO PEDIDO': 'string',
+        'LEGENDA TIPO': 'string',
+        'CONCESSIONÁRIA': 'string',
+        'TRANSPORTADORA': 'string',
+        'LINHAS': 'Int64',
+        'STATUS': 'Int64',
+        'LEGENDA STATUS': 'string',
+        'Valor Venda': 'float64',
+    }
 
-    if 'LINHAS' in df.columns:
-        df['LINHAS'] = pd.to_numeric(df['LINHAS'], errors='coerce').fillna(1)
-        df['Ticket'] = df['Valor Venda'] / df['LINHAS']
-    else:
-        df['Ticket'] = df['Valor Venda']
+    REMOVE_COLS = [
+        'Filial/Fabrica',
+        'Numero Pedido',
+        'Tipo Pedido',
+        'Ultimo Sts',
+        'Proximo Sts',
+        'Data Pedido',
+        'Lista Data',
+        'Data Lote Etiqueta',
+        'Dias',
+        'Cod Susp',
+        'Cod Cliente',
+        'Nome do Cliente',
+        'Nome da Transportadora',
+        'Cr Ativo',
+        'Qtde Linhas',
+        'Cond Pagto',
+        'Valor US$',
+        'Etiq Emitida',
+        'Pedido Atendente',
+        'Lista Atender'
+    ]
+    df.drop(columns=REMOVE_COLS, errors='ignore', inplace=True)
+
+    df['Valor Venda'].replace(',', '.', regex=True, inplace=True)
+
+    for col, dtype in DATA_TYPES.items():
+        if col in df.columns:
+            df[col] = df[col].astype(dtype)
+
+    df['> R$ 1.000,00 ?'] = np.where(df['Valor Venda'] < 1000, '< R$ 1.000,00','> R$ 1.000,00')
+
+    df['Ticket'] = df['Valor Venda'] / df['LINHAS'].astype('float64')
 
     # --- nvjer ---
-    df['nvjer'] = df['PEDIDO'].astype(str).str[:8]
+    df['nvjer'] = df['PEDIDO'].astype(str).str[:8].astype('string')
+
+    print(df.dtypes)
 
     # Remove duplicatas
     df = df.drop_duplicates(subset=['PEDIDO']).reset_index(drop=True)

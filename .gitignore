@@ -1,3 +1,4 @@
 .venv
 teste.py
 estudo.py
+*__pycache__
